@@ -79,8 +79,8 @@ export async function createRoom({ hostName, maxPlayers = 6, cardsPerPlayer = 1,
     name: hostName,
     uid,
     isHost: true,
-    cards: hostCards,
-    markedCells: hostMarked,
+    cards: JSON.stringify(hostCards),
+    markedCells: JSON.stringify(hostMarked),
     status: 'waiting',
     bingoAlert: null,
     joinedAt: serverTimestamp(),
@@ -110,7 +110,9 @@ export async function joinRoom({ roomCode, playerName }) {
   const playersSnap = await getDoc(doc(db, ROOMS, roomCode, PLAYERS, uid));
   if (playersSnap.exists()) {
     // Reconexión: devolver datos existentes
-    return { uid, cards: playersSnap.data().cards, roomData };
+    const pd = playersSnap.data();
+    const existingCards = typeof pd.cards === 'string' ? JSON.parse(pd.cards) : pd.cards;
+    return { uid, cards: existingCards, roomData };
   }
 
   // Contar jugadores actuales
@@ -126,8 +128,8 @@ export async function joinRoom({ roomCode, playerName }) {
     name: playerName,
     uid,
     isHost: false,
-    cards,
-    markedCells,
+    cards: JSON.stringify(cards),
+    markedCells: JSON.stringify(markedCells),
     status: 'waiting',
     bingoAlert: null,
     joinedAt: serverTimestamp(),
@@ -197,5 +199,5 @@ export async function confirmBingoInvalid(roomCode, uid) {
 
 /** El jugador actualiza su marcado manual */
 export async function updateMarkedCells(roomCode, uid, markedCells) {
-  await updateDoc(doc(db, ROOMS, roomCode, PLAYERS, uid), { markedCells });
+  await updateDoc(doc(db, ROOMS, roomCode, PLAYERS, uid), { markedCells: JSON.stringify(markedCells) });
 }

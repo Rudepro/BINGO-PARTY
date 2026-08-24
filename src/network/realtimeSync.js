@@ -26,7 +26,12 @@ export function subscribeToRoom(roomCode, onUpdate) {
  */
 export function subscribeToPlayers(roomCode, onUpdate) {
   return onSnapshot(collection(db, 'rooms', roomCode, 'players'), (snap) => {
-    const players = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const players = snap.docs.map(d => {
+      const data = d.data();
+      if (typeof data.cards === 'string') data.cards = JSON.parse(data.cards);
+      if (typeof data.markedCells === 'string') data.markedCells = JSON.parse(data.markedCells);
+      return { id: d.id, ...data };
+    });
     onUpdate(players);
   });
 }
@@ -40,6 +45,11 @@ export function subscribeToPlayers(roomCode, onUpdate) {
  */
 export function subscribeToPlayer(roomCode, uid, onUpdate) {
   return onSnapshot(doc(db, 'rooms', roomCode, 'players', uid), (snap) => {
-    if (snap.exists()) onUpdate(snap.data());
+    if (snap.exists()) {
+      const data = snap.data();
+      if (typeof data.cards === 'string') data.cards = JSON.parse(data.cards);
+      if (typeof data.markedCells === 'string') data.markedCells = JSON.parse(data.markedCells);
+      onUpdate(data);
+    }
   });
 }

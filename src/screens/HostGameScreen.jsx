@@ -107,7 +107,7 @@ export default function HostGameScreen() {
           <Lobby players={players} roomCode={roomId} isHost={true} onStart={handleStart} roomConfig={roomConfig} />
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: '2rem', alignItems: 'start' }}>
+        <div className="game-layout">
           
           {/* Main content (Left) */}
           <div className="flex flex-col gap-3">

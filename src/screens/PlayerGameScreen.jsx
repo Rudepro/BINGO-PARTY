@@ -107,7 +107,7 @@ export default function PlayerGameScreen() {
         <BingoButton onBingo={handleBingo} disabled={isFinished || status === 'waiting'} status={status} />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 300px', gap: '1.5rem', alignItems: 'start' }}>
+      <div className="game-layout">
         
         {/* Left: Cards */}
         <div className="flex flex-col gap-3 items-center">

@@ -75,6 +75,14 @@ p  { line-height: 1.6; color: var(--gray-200); }
 .gap-3 { gap: 1.5rem; }
 .text-center { text-align: center; }
 
+/* ─── Game Layout ────────────────────────────────────────── */
+.game-layout {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 2rem;
+  align-items: start;
+}
+
 /* ─── Glass card ─────────────────────────────────────────── */
 .glass {
   background: rgba(255,255,255,.07);
@@ -401,6 +409,12 @@ p  { line-height: 1.6; color: var(--gray-200); }
 }
 
 /* ─── Responsive ─────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .game-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 640px) {
   .bingo-card { max-width: 100%; }
   h1 { font-size: 2rem; }
