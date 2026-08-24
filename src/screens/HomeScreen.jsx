@@ -12,13 +12,7 @@ export default function HomeScreen() {
 
       {/* Logo */}
       <div className="text-center animate-fade-up" style={{ marginBottom: '2.5rem' }}>
-        <div style={{ fontSize: '5rem', lineHeight: 1, marginBottom: '.5rem' }}>🎱</div>
-        <h1 style={{
-          background: 'linear-gradient(135deg, var(--gold-400), var(--gold-600), #fff)',
-          WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
-        }}>
-          BINGO PARTY
-        </h1>
+        <img src="./logo.png" alt="Bingo Party Logo" style={{ maxWidth: '280px', width: '100%' }} />
         <p style={{ color: 'var(--gray-400)', marginTop: '.5rem', fontSize: '1.1rem' }}>
           Multijugador en tiempo real · Hasta 6 jugadores
         </p>
