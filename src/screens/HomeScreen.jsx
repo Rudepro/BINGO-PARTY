@@ -33,7 +33,7 @@ export default function HomeScreen() {
 
       {/* Footer */}
       <p style={{ marginTop: '3rem', color: 'var(--gray-400)', fontSize: '.75rem' }}>
-        Bingo americano de 75 bolas · 100% gratuito
+        Bingo de 75 bolas · 100% gratuito
       </p>
     </div>
   );
