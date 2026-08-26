@@ -76,7 +76,9 @@ export default function HostGameScreen() {
       const pattern = "Validado por el host"; // Simplificado para esta versión
       confirmBingoValid(roomId, uid, pattern);
     } else {
-      confirmBingoInvalid(roomId, uid);
+      const activePlayers = players.filter(p => !p.isHost && p.status !== 'eliminated');
+      const shouldFinish = activePlayers.length === 1 && activePlayers[0].uid === uid;
+      confirmBingoInvalid(roomId, uid, shouldFinish);
     }
   };
 

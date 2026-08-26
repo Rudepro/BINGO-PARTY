@@ -189,12 +189,17 @@ export async function confirmBingoValid(roomCode, uid, matchedPattern) {
 }
 
 /** El host rechaza un BINGO inválido → jugador eliminado */
-export async function confirmBingoInvalid(roomCode, uid) {
-  await updateDoc(doc(db, ROOMS, roomCode, PLAYERS, uid), {
-    status: 'eliminated',
-    bingoAlert: null,
-  });
-  await updateDoc(doc(db, ROOMS, roomCode), { state: GAME_STATES.PLAYING });
+export async function confirmBingoInvalid(roomCode, uid, shouldFinishGame = false) {
+  const batch = [
+    updateDoc(doc(db, ROOMS, roomCode, PLAYERS, uid), {
+      status: 'eliminated',
+      bingoAlert: null,
+    }),
+    updateDoc(doc(db, ROOMS, roomCode), { 
+      state: shouldFinishGame ? GAME_STATES.FINISHED : GAME_STATES.PLAYING 
+    }),
+  ];
+  await Promise.all(batch);
 }
 
 /** El jugador actualiza su marcado manual */
