@@ -20,59 +20,77 @@ export default function BingoCard({ cardData, markedCells, calledNumbers = new S
   const color   = getCardColor(colorIndex);
 
   return (
-    <div
-      className="bingo-card"
-      style={{ borderColor: color.accent + '55', boxShadow: `0 0 18px ${color.accent}33` }}
-    >
-      {/* Header B I N G O */}
-      <div className="bingo-card-header">
-        {LETTERS.map(l => {
-          const col = getColumnColor(l);
-          return (
-            <div
-              key={l}
-              className="bingo-header-cell"
-              style={{ background: col.bg, color: col.text }}
-            >
-              {l}
-            </div>
-          );
-        })}
-      </div>
+    <div className="bingo-card-wrapper">
+      <div
+        className="bingo-card"
+        style={{
+          borderColor: color.accent + '44',
+          boxShadow: `0 0 32px ${color.accent}28, 0 8px 40px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.12)`,
+        }}
+      >
+        {/* Header B I N G O */}
+        <div className="bingo-card-header">
+          {LETTERS.map(l => {
+            const col = getColumnColor(l);
+            return (
+              <div
+                key={l}
+                className="bingo-header-cell"
+                style={{
+                  background: `linear-gradient(180deg, ${col.bg}ee 0%, ${col.bg}bb 100%)`,
+                  color: col.text,
+                }}
+              >
+                {l}
+              </div>
+            );
+          })}
+        </div>
 
-      {/* Cells */}
-      {display.map((row, ri) =>
-        row.map((num, ci) => {
-          const isFree    = num === 0;
-          const isMarked  = markedCells?.[ri]?.[ci] ?? false;
-          const isCalled  = calledNumbers.has(num);
-          const colColor  = getColumnColor(LETTERS[ci]);
+        {/* Cells */}
+        <div className="bingo-cells-grid">
+          {display.map((row, ri) =>
+            row.map((num, ci) => {
+              const isFree    = num === 0;
+              const isMarked  = markedCells?.[ri]?.[ci] ?? false;
+              const isCalled  = calledNumbers.has(num);
+              const colColor  = getColumnColor(LETTERS[ci]);
 
-          return (
-            <div
-              key={`${ri}-${ci}`}
-              className={`bingo-cell${isFree ? ' free' : ''}${isMarked ? ' marked' : ''}${isCalled && !isMarked ? ' called' : ''}`}
-              style={
-                isMarked
-                  ? { background: color.accent, color: '#000', borderColor: color.accent }
-                  : isFree
-                  ? { background: 'rgba(251,191,36,.15)', borderColor: 'var(--gold-500)', color: 'var(--gold-400)' }
-                  : {}
+              let cellStyle = {};
+              if (isMarked) {
+                cellStyle = {
+                  background: `linear-gradient(145deg, ${color.accent}ee 0%, ${color.accent}bb 100%)`,
+                  color: '#fff',
+                  boxShadow: `0 0 14px ${color.accent}88, inset 0 1px 0 rgba(255,255,255,.25)`,
+                };
+              } else if (isFree) {
+                cellStyle = {};
+              } else if (isCalled) {
+                cellStyle = {
+                  background: `${colColor.bg}33`,
+                  borderColor: `${colColor.bg}88`,
+                  color: '#fff',
+                };
               }
-              onClick={() => !disabled && !isFree && onCellClick?.(ri, ci)}
-            >
-              {isFree ? 'FREE' : num}
-              {isMarked && !isFree && (
-                <span style={{
-                  position: 'absolute', inset: 0,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: '1.4em', opacity: .25, pointerEvents: 'none',
-                }}>✓</span>
-              )}
-            </div>
-          );
-        })
-      )}
+
+              return (
+                <div
+                  key={`${ri}-${ci}`}
+                  className={`bingo-cell${isFree ? ' free' : ''}${isMarked ? ' marked' : ''}${isCalled && !isMarked ? ' called' : ''}`}
+                  style={cellStyle}
+                  onClick={() => !disabled && !isFree && onCellClick?.(ri, ci)}
+                >
+                  {isFree ? '⭐ FREE' : num}
+                  {isMarked && !isFree && (
+                    <span className="bingo-stamp">✓</span>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
     </div>
   );
 }
+

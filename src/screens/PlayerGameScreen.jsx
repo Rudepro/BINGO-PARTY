@@ -8,6 +8,7 @@ import { useRoomStore } from '../state/roomStore.js';
 import { useGameStore } from '../state/gameStore.js';
 import { usePlayerStore } from '../state/playerStore.js';
 import { GAME_STATES } from '../core/gameStateMachine.js';
+import { getColumnColor } from '../utils/colorPalette.js';
 
 import Lobby from '../components/shared/Lobby.jsx';
 import PatternIndicator from '../components/player/PatternIndicator.jsx';
@@ -24,6 +25,7 @@ export default function PlayerGameScreen() {
   const playerStore = usePlayerStore();
   
   const [loading, setLoading] = useState(true);
+  const [overlayBall, setOverlayBall] = useState(null);
 
   // Sincronizar sala y jugador local
   useEffect(() => {
@@ -57,6 +59,15 @@ export default function PlayerGameScreen() {
     return () => clearTimeout(timeoutId);
   }, [playerStore.markedCells, roomId, playerStore.uid, loading]);
 
+  // Mostrar overlay de bola cuando llegue una nueva
+  useEffect(() => {
+    const ball = gameStore.currentBall;
+    if (!ball) return;
+    setOverlayBall(ball);
+    const t = setTimeout(() => setOverlayBall(null), 2500);
+    return () => clearTimeout(t);
+  }, [gameStore.currentBall?.number]);
+
   const handleBingo = () => {
     claimBingo(roomId, playerStore.uid);
   };
@@ -74,6 +85,7 @@ export default function PlayerGameScreen() {
   const isLobby = gameState === GAME_STATES.LOBBY;
   const isFinished = gameState === GAME_STATES.FINISHED;
   const calledSet = new Set(ballSequence.slice(0, calledCount));
+  const ballColor = currentBall ? getColumnColor(currentBall.letter) : null;
 
   if (isLobby) {
     return (
@@ -86,21 +98,57 @@ export default function PlayerGameScreen() {
 
   return (
     <div className="container" style={{ padding: '1rem 0' }}>
-      
+
+      {/* Ball overlay — aparece en cada bola nueva */}
+      {overlayBall && (() => {
+        const oc = getColumnColor(overlayBall.letter);
+        return (
+          <div className="ball-overlay" onClick={() => setOverlayBall(null)}>
+            <div className="ball-overlay-content">
+              <span className="ball-overlay-label">¡Nueva bola!</span>
+              <div
+                className="roulette-ball"
+                style={{
+                  background: `radial-gradient(circle at 35% 30%, ${oc.bg}dd 0%, ${oc.bg} 100%)`,
+                  color: oc.text,
+                  width: 'clamp(150px, 40vw, 220px)',
+                  height: 'clamp(150px, 40vw, 220px)',
+                }}
+              >
+                <span className="ball-letter">{overlayBall.letter}</span>
+                <span className="ball-number">{overlayBall.number}</span>
+              </div>
+              <span className="ball-overlay-count">{calledCount} / 75 cantadas</span>
+              <span style={{ fontSize: '.75rem', color: 'var(--gray-400)' }}>Toca para cerrar</span>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Header Mobile: Current Ball + Bingo Btn */}
-      <div className="flex items-center glass" style={{ padding: '1rem', borderRadius: 'var(--radius-md)', marginBottom: '1rem', justifyContent: 'space-between' }}>
+      <div className="flex items-center glass" style={{ padding: '1rem 1.25rem', borderRadius: 'var(--radius-md)', marginBottom: '1rem', justifyContent: 'space-between' }}>
         <div className="flex items-center gap-2">
-          {currentBall ? (
-            <div style={{ background: 'var(--gold-400)', color: '#000', width: 60, height: 60, borderRadius: '50%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontWeight: 900 }}>
-              <span style={{ fontSize: '.8rem' }}>{currentBall.letter}</span>
-              <span style={{ fontSize: '1.5rem', lineHeight: 1 }}>{currentBall.number}</span>
+          {currentBall && ballColor ? (
+            <div
+              className="mini-ball"
+              style={{
+                background: `radial-gradient(circle at 35% 30%, ${ballColor.bg}dd 0%, ${ballColor.bg} 100%)`,
+                color: ballColor.text,
+              }}
+            >
+              <span style={{ fontSize: '.6rem', fontWeight: 900, opacity: .9, letterSpacing: '1px' }}>{currentBall.letter}</span>
+              <span style={{ fontSize: '1.3rem', fontWeight: 900, lineHeight: 1 }}>{currentBall.number}</span>
             </div>
           ) : (
-            <div style={{ width: 60, height: 60, borderRadius: '50%', background: 'rgba(255,255,255,.1)' }} />
+            <div className="mini-ball" style={{ background: 'rgba(255,255,255,.08)' }}>
+              <span style={{ fontSize: '1.5rem', opacity: .4 }}>🎱</span>
+            </div>
           )}
           <div className="flex flex-col">
-            <span style={{ fontSize: '.8rem', color: 'var(--gray-400)' }}>Última bola</span>
-            <span style={{ fontWeight: 700, color: 'var(--gold-400)' }}>{calledCount}/75</span>
+            <span style={{ fontSize: '.75rem', color: 'var(--gray-400)', fontWeight: 600, letterSpacing: '.5px', textTransform: 'uppercase' }}>Última bola</span>
+            <span style={{ fontWeight: 900, color: 'var(--gold-400)', fontSize: '1.1rem' }}>
+              {calledCount}<span style={{ color: 'var(--gray-400)', fontWeight: 400 }}>/75</span>
+            </span>
           </div>
         </div>
 
@@ -112,9 +160,11 @@ export default function PlayerGameScreen() {
         {/* Left: Cards */}
         <div className="flex flex-col gap-3 items-center">
           {isFinished && (
-            <div className="glass text-center w-full" style={{ padding: '1.5rem', borderRadius: 'var(--radius-md)', border: '2px solid var(--gold-400)' }}>
-              <h2 style={{ color: 'var(--gold-400)' }}>PARTIDA FINALIZADA</h2>
-              {status === 'winner' ? <p>¡Felicitaciones, ganaste!</p> : <p>Sigue intentando en la próxima.</p>}
+            <div className="glass-gold text-center w-full animate-fade-up" style={{ padding: '1.5rem' }}>
+              <h2 style={{ color: 'var(--gold-400)', marginBottom: '.5rem' }}>🎉 PARTIDA FINALIZADA</h2>
+              {status === 'winner'
+                ? <p style={{ color: 'var(--green-400)', fontWeight: 700 }}>¡Felicitaciones, ganaste! 🏆</p>
+                : <p>Sigue intentando en la próxima.</p>}
             </div>
           )}
 
