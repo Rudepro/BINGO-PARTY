@@ -10,7 +10,8 @@ export const usePlayerStore = create((set, get) => ({
   isHost:      false,
   cards:       [],          // number[][][] → [cardIdx][col][row]
   markedCells: [],          // boolean[][][] → [cardIdx][row][col]
-  status:      'waiting',   // 'waiting' | 'playing' | 'eliminated' | 'winner'
+  status:      'waiting',   // 'waiting' | 'playing' | 'eliminated'
+  wins:        0,           // cuántos patrones ganados en esta partida
   hostCardsVisible: true,   // toggle Esconder/Mostrar Cartas (solo host)
 
   setUid:    (uid) => set({ uid }),
@@ -19,6 +20,7 @@ export const usePlayerStore = create((set, get) => ({
   setCards:  (c)   => set({ cards: c }),
   setMarkedCells: (m) => set({ markedCells: m }),
   setStatus: (s)   => set({ status: s }),
+  setWins:   (w)   => set({ wins: w }),
   toggleHostCards: () => set(state => ({ hostCardsVisible: !state.hostCardsVisible })),
 
   /** Marca/desmarca una celda de forma local (optimistic update) */
@@ -44,11 +46,12 @@ export const usePlayerStore = create((set, get) => ({
       cards:       playerData.cards,
       markedCells: playerData.markedCells,
       status:      playerData.status,
+      wins:        playerData.wins ?? 0,
     });
   },
 
   reset: () => set({
     uid: null, name: null, isHost: false,
-    cards: [], markedCells: [], status: 'waiting', hostCardsVisible: true,
+    cards: [], markedCells: [], status: 'waiting', wins: 0, hostCardsVisible: true,
   }),
 }));

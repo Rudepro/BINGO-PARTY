@@ -46,51 +46,81 @@ export default function CreateRoomScreen() {
 
   return (
     <div className="flex flex-col items-center" style={{ minHeight: '100dvh', padding: '2rem 1rem' }}>
-      <div className="glass animate-fade-up" style={{ width: '100%', maxWidth: 480, padding: '2rem' }}>
-        <h2 style={{ color: 'var(--gold-400)', marginBottom: '1.5rem' }}>🏠 Crear Sala</h2>
+      <div className="glass animate-fade-up" style={{ width: '100%', maxWidth: 520, padding: '2rem' }}>
+
+        {/* Header */}
+        <h2 style={{ color: 'var(--gold-400)', marginBottom: '1.75rem', textAlign: 'center' }}>
+          Crear Sala
+        </h2>
 
         {/* Host name */}
         <div style={{ marginBottom: '1.25rem' }}>
           <label className="form-label">Tu nombre (Host)</label>
-          <input className="input input-normal" placeholder="Ej: María" value={hostName}
-            onChange={e => setHostName(e.target.value)} maxLength={20} />
+          <input
+            className="input input-normal"
+            placeholder="Ej: María"
+            value={hostName}
+            onChange={e => setHostName(e.target.value)}
+            maxLength={20}
+          />
         </div>
 
-        {/* Max players */}
-        <div style={{ marginBottom: '1.25rem' }}>
-          <label className="form-label">Máximo de jugadores: {maxPlayers}</label>
-          <input type="range" min={2} max={6} value={maxPlayers}
-            onChange={e => setMaxPlayers(+e.target.value)}
-            style={{ width: '100%', accentColor: 'var(--gold-400)' }} />
-          <div className="flex" style={{ justifyContent: 'space-between', fontSize: '.75rem', color: 'var(--gray-400)' }}>
-            <span>2</span><span>6</span>
+        {/* Grid: Max players + Cards per player */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: '1rem',
+          marginBottom: '1.25rem',
+        }}>
+          {/* Max players */}
+          <div>
+            <label className="form-label">Máx. jugadores: <strong style={{ color: 'var(--gold-400)' }}>{maxPlayers}</strong></label>
+            <input
+              type="range" min={2} max={10} value={maxPlayers}
+              onChange={e => setMaxPlayers(+e.target.value)}
+              style={{ width: '100%', accentColor: 'var(--gold-400)', marginTop: '.35rem' }}
+            />
+            <div className="flex" style={{ justifyContent: 'space-between', fontSize: '.7rem', color: 'var(--gray-400)' }}>
+              <span>2</span><span>10</span>
+            </div>
           </div>
-        </div>
 
-        {/* Cards per player */}
-        <div style={{ marginBottom: '1.25rem' }}>
-          <label className="form-label">Cartones por jugador</label>
-          <div className="flex gap-2">
-            {[1,2,3].map(n => (
-              <button key={n}
-                className={`btn ${cardsPerPlayer === n ? 'btn-gold' : 'btn-ghost'}`}
-                style={{ flex: 1 }}
-                onClick={() => setCardsPerPlayer(n)}>
-                {n}
-              </button>
-            ))}
+          {/* Cards per player */}
+          <div>
+            <label className="form-label">Cartones por jugador</label>
+            <div className="flex gap-2" style={{ marginTop: '.35rem' }}>
+              {[1, 2, 3].map(n => (
+                <button
+                  key={n}
+                  className={`btn ${cardsPerPlayer === n ? 'btn-gold' : 'btn-ghost'}`}
+                  style={{ flex: 1 }}
+                  onClick={() => setCardsPerPlayer(n)}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
         {/* Auto interval */}
-        <div style={{ marginBottom: '1.25rem' }}>
+        <div style={{ marginBottom: '1.5rem' }}>
           <label className="form-label">Modo de sorteo</label>
-          <div className="flex gap-2">
-            <button className={`btn ${autoInterval === 0 ? 'btn-gold' : 'btn-ghost'}`} style={{ flex: 1 }} onClick={() => setAutoInterval(0)}>
+          <div className="flex gap-2" style={{ marginTop: '.35rem' }}>
+            <button
+              className={`btn ${autoInterval === 0 ? 'btn-gold' : 'btn-ghost'}`}
+              style={{ flex: 1 }}
+              onClick={() => setAutoInterval(0)}
+            >
               Manual
             </button>
             {[5, 10, 15].map(s => (
-              <button key={s} className={`btn ${autoInterval === s ? 'btn-gold' : 'btn-ghost'}`} style={{ flex: 1 }} onClick={() => setAutoInterval(s)}>
+              <button
+                key={s}
+                className={`btn ${autoInterval === s ? 'btn-gold' : 'btn-ghost'}`}
+                style={{ flex: 1 }}
+                onClick={() => setAutoInterval(s)}
+              >
                 {s}s
               </button>
             ))}
@@ -99,17 +129,55 @@ export default function CreateRoomScreen() {
 
         {/* Patterns */}
         <div style={{ marginBottom: '1.5rem' }}>
-          <label className="form-label">Patrones de victoria (puedes seleccionar varios)</label>
-          <div className="flex flex-col gap-2">
-            {PATTERN_LIST.map(p => (
-              <button key={p.id}
-                className={`btn ${selectedPats.includes(p.id) ? 'btn-green' : 'btn-ghost'}`}
-                style={{ justifyContent: 'flex-start', textAlign: 'left' }}
-                onClick={() => togglePattern(p.id)}>
-                {selectedPats.includes(p.id) ? '✓ ' : '  '}{p.icon} {p.label}
-                <span style={{ fontSize: '.75rem', opacity: .7, marginLeft: 'auto' }}>{p.description}</span>
-              </button>
-            ))}
+          <label className="form-label">
+            Patrones de victoria
+            <span style={{ fontWeight: 400, color: 'var(--gray-400)', marginLeft: '.5rem', fontSize: '.75rem' }}>
+              (puedes combinar varios)
+            </span>
+          </label>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: '.6rem',
+            marginTop: '.5rem',
+          }}>
+            {PATTERN_LIST.map(p => {
+              const active = selectedPats.includes(p.id);
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => togglePattern(p.id)}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'flex-start',
+                    padding: '.75rem 1rem',
+                    borderRadius: 'var(--radius-sm)',
+                    border: active
+                      ? '2px solid var(--gold-400)'
+                      : '2px solid rgba(255,255,255,0.08)',
+                    background: active
+                      ? 'rgba(251,191,36,0.12)'
+                      : 'rgba(255,255,255,0.04)',
+                    cursor: 'pointer',
+                    transition: 'all 0.18s ease',
+                    textAlign: 'left',
+                  }}
+                >
+                  <span style={{
+                    fontWeight: 700,
+                    fontSize: '.85rem',
+                    color: active ? 'var(--gold-400)' : 'var(--gray-100)',
+                    marginBottom: '.2rem',
+                  }}>
+                    {active ? '✓ ' : ''}{p.label}
+                  </span>
+                  <span style={{ fontSize: '.7rem', color: 'var(--gray-400)', lineHeight: 1.3 }}>
+                    {p.description}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -117,8 +185,13 @@ export default function CreateRoomScreen() {
 
         <div className="flex gap-2">
           <button className="btn btn-ghost" onClick={() => navigate('/')}>← Volver</button>
-          <button className="btn btn-gold btn-full" onClick={handleCreate} disabled={loading} id="btn-confirm-create">
-            {loading ? '⏳ Creando…' : '🎲 Crear Sala'}
+          <button
+            className="btn btn-gold btn-full"
+            onClick={handleCreate}
+            disabled={loading}
+            id="btn-confirm-create"
+          >
+            {loading ? '⏳ Creando…' : 'Crear Sala'}
           </button>
         </div>
       </div>

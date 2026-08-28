@@ -18,7 +18,8 @@ export default function RouletteAnimation({
   onPause, onResume, isPaused, isVerifying, autoInterval = 0,
 }) {
   const [spinning, setSpinning] = useState(false);
-  const timerRef = useRef(null);
+  const timerRef   = useRef(null);
+  const isCallingRef = useRef(false); // guard contra doble llamada
   const ballKey  = currentBall?.number ?? 'none';
   const colColor = currentBall ? getColumnColor(currentBall.letter) : { bg: '#374151', text: '#9ca3af' };
 
@@ -28,16 +29,26 @@ export default function RouletteAnimation({
       clearInterval(timerRef.current);
       return;
     }
-    timerRef.current = setInterval(() => {
-      if (calledCount < 75) onCallNext();
+    timerRef.current = setInterval(async () => {
+      if (calledCount < 75 && !isCallingRef.current) {
+        isCallingRef.current = true;
+        try { await onCallNext(); } finally { isCallingRef.current = false; }
+      }
     }, autoInterval * 1000);
     return () => clearInterval(timerRef.current);
   }, [autoInterval, isPaused, isVerifying, calledCount]);
 
-  const handleManual = () => {
-    if (calledCount >= 75 || isVerifying || spinning) return;
+  const handleManual = async () => {
+    if (calledCount >= 75 || isVerifying || spinning || isCallingRef.current) return;
+    isCallingRef.current = true;
     setSpinning(true);
-    setTimeout(() => { setSpinning(false); onCallNext(); }, 500);
+    try {
+      await new Promise(r => setTimeout(r, 500));
+      await onCallNext();
+    } finally {
+      setSpinning(false);
+      isCallingRef.current = false;
+    }
   };
 
   return (

@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   subscribeToRoom, subscribeToPlayer, subscribeToPlayers
 } from '../network/realtimeSync.js';
-import { claimBingo, updateMarkedCells } from '../network/roomService.js';
+import { autoValidateBingo, updateMarkedCells } from '../network/roomService.js';
 import { useRoomStore } from '../state/roomStore.js';
 import { useGameStore } from '../state/gameStore.js';
 import { usePlayerStore } from '../state/playerStore.js';
@@ -20,12 +20,13 @@ export default function PlayerGameScreen() {
   const { roomId } = useParams();
   const navigate = useNavigate();
 
-  const roomStore = useRoomStore();
-  const gameStore = useGameStore();
+  const roomStore   = useRoomStore();
+  const gameStore   = useGameStore();
   const playerStore = usePlayerStore();
-  
-  const [loading, setLoading] = useState(true);
-  const [overlayBall, setOverlayBall] = useState(null);
+
+  const [loading,      setLoading]      = useState(true);
+  const [overlayBall,  setOverlayBall]  = useState(null);
+  const [isValidating, setIsValidating] = useState(false); // guard durante auto-validación
 
   // Sincronizar sala y jugador local
   useEffect(() => {
@@ -44,7 +45,7 @@ export default function PlayerGameScreen() {
     });
 
     const unsubPlayers = subscribeToPlayers(roomId, (players) => {
-       roomStore.setPlayers(players);
+      roomStore.setPlayers(players);
     });
 
     return () => { unsubRoom(); unsubPlayer(); unsubPlayers(); };
@@ -68,8 +69,15 @@ export default function PlayerGameScreen() {
     return () => clearTimeout(t);
   }, [gameStore.currentBall?.number]);
 
-  const handleBingo = () => {
-    claimBingo(roomId, playerStore.uid);
+  // ── Cantar BINGO (validación automática) ─────────────────────────────────
+  const handleBingo = async () => {
+    if (isValidating) return;
+    setIsValidating(true);
+    try {
+      await autoValidateBingo(roomId, playerStore.uid);
+    } finally {
+      setIsValidating(false);
+    }
   };
 
   const handleCellClick = (cardIdx, r, c) => {
@@ -80,12 +88,17 @@ export default function PlayerGameScreen() {
 
   const { gameState, calledCount, currentBall, ballSequence, activePatterns } = gameStore;
   const { players, roomConfig } = roomStore;
-  const { cards, markedCells, status } = playerStore;
+  const { cards, markedCells, status, wins } = playerStore;
 
-  const isLobby = gameState === GAME_STATES.LOBBY;
+  const isLobby    = gameState === GAME_STATES.LOBBY;
   const isFinished = gameState === GAME_STATES.FINISHED;
-  const calledSet = new Set(ballSequence.slice(0, calledCount));
-  const ballColor = currentBall ? getColumnColor(currentBall.letter) : null;
+  const calledSet  = new Set(ballSequence.slice(0, calledCount));
+  const ballColor  = currentBall ? getColumnColor(currentBall.letter) : null;
+
+  // El cartón solo se bloquea si el jugador fue eliminado o la partida terminó
+  const cardDisabled = isFinished || status === 'eliminated';
+  // El botón BINGO solo se bloquea si está eliminado, la partida terminó, o está validando
+  const bingoDisabled = isFinished || status === 'eliminated';
 
   if (isLobby) {
     return (
@@ -152,19 +165,28 @@ export default function PlayerGameScreen() {
           </div>
         </div>
 
-        <BingoButton onBingo={handleBingo} disabled={isFinished || status === 'waiting'} status={status} />
+        <BingoButton
+          onBingo={handleBingo}
+          disabled={bingoDisabled}
+          status={status}
+          wins={wins}
+          isValidating={isValidating}
+        />
       </div>
 
       <div className="game-layout">
-        
+
         {/* Left: Cards */}
         <div className="flex flex-col gap-3 items-center">
           {isFinished && (
             <div className="glass-gold text-center w-full animate-fade-up" style={{ padding: '1.5rem' }}>
               <h2 style={{ color: 'var(--gold-400)', marginBottom: '.5rem' }}>🎉 PARTIDA FINALIZADA</h2>
-              {status === 'winner'
-                ? <p style={{ color: 'var(--green-400)', fontWeight: 700 }}>¡Felicitaciones, ganaste! 🏆</p>
-                : <p>Sigue intentando en la próxima.</p>}
+              {wins > 0
+                ? <p style={{ color: 'var(--green-400)', fontWeight: 700 }}>
+                    ¡Ganaste {wins} {wins === 1 ? 'copa' : 'copas'}! 🏆
+                  </p>
+                : <p>Sigue intentando en la próxima.</p>
+              }
             </div>
           )}
 
@@ -177,7 +199,7 @@ export default function PlayerGameScreen() {
                 calledNumbers={calledSet}
                 colorIndex={i}
                 onCellClick={(r, c) => handleCellClick(i, r, c)}
-                disabled={isFinished || status === 'eliminated'}
+                disabled={cardDisabled}
               />
             ))}
           </div>
@@ -188,7 +210,7 @@ export default function PlayerGameScreen() {
           <div className="glass" style={{ padding: '1rem', borderRadius: 'var(--radius-md)' }}>
             <PatternIndicator patternIds={activePatterns} />
           </div>
-          
+
           <div className="glass" style={{ padding: '1rem', borderRadius: 'var(--radius-md)' }}>
             <CalledNumbersBoard calledNumbers={calledSet} currentBall={currentBall} />
           </div>

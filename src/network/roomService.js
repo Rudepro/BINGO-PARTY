@@ -10,7 +10,7 @@
  *     currentBall: { number, letter } | null
  *     state: GameState
  *     createdAt: Timestamp
- *     winners: []
+ *     winners: []               ← [{ uid, matchedPatternId, matchedPatternLabel }]
  *
  *   /rooms/{roomCode}/players/{uid}
  *     name: string
@@ -18,20 +18,22 @@
  *     isHost: boolean
  *     cards: number[][][]        ← grid[card][col][row]
  *     markedCells: boolean[][][] ← [card][row][col]
- *     status: PlayerStatus
+ *     status: PlayerStatus       ← 'waiting'|'playing'|'eliminated' (winner=sigue jugando)
+ *     wins: number               ← cuántos patrones ha ganado en esta partida
  *     bingoAlert: { claimed, claimedAt } | null
  *     joinedAt: Timestamp
  */
 
 import {
   doc, setDoc, getDoc, updateDoc,
-  collection, addDoc, serverTimestamp, deleteDoc,
+  collection, serverTimestamp, increment,
 } from 'firebase/firestore';
 import { db, ensureAnonymousAuth } from './firebaseClient.js';
 import { generateRoomCode }        from '../utils/idGenerator.js';
 import { generatePlayerCards, initialMarkedCells } from '../core/cardGenerator.js';
 import { createBallSequence }      from '../core/numberCaller.js';
 import { GAME_STATES }             from '../core/gameStateMachine.js';
+import { checkBingo }              from '../core/bingoValidator.js';
 
 const ROOMS = 'rooms';
 const PLAYERS = 'players';
@@ -82,6 +84,7 @@ export async function createRoom({ hostName, maxPlayers = 6, cardsPerPlayer = 1,
     cards: JSON.stringify(hostCards),
     markedCells: JSON.stringify(hostMarked),
     status: 'waiting',
+    wins: 0,
     bingoAlert: null,
     joinedAt: serverTimestamp(),
   });
@@ -115,7 +118,7 @@ export async function joinRoom({ roomCode, playerName }) {
     return { uid, cards: existingCards, roomData };
   }
 
-  // Contar jugadores actuales
+  // Generar cartones únicos para el nuevo jugador
   const { cardsPerPlayer } = roomData.config;
   const usedSigs = new Set(roomData.usedSignatures || []);
   const cards = generatePlayerCards(cardsPerPlayer, usedSigs);
@@ -131,6 +134,7 @@ export async function joinRoom({ roomCode, playerName }) {
     cards: JSON.stringify(cards),
     markedCells: JSON.stringify(markedCells),
     status: 'waiting',
+    wins: 0,
     bingoAlert: null,
     joinedAt: serverTimestamp(),
   });
@@ -145,12 +149,17 @@ export async function startGame(roomCode) {
   // Actualizar estado de todos los jugadores a 'playing' se hace en el listener del host
 }
 
-export async function callNextBall(roomCode, ballSequence, calledCount) {
+export async function callNextBall(roomCode, ballSequence, _localCalledCount) {
+  // Leer el calledCount real desde Firestore para evitar repetición por race condition
+  const roomSnap = await getDoc(doc(db, ROOMS, roomCode));
+  if (!roomSnap.exists()) return null;
+  const calledCount = roomSnap.data().calledCount ?? 0;
+
   if (calledCount >= 75) return null;
   const number = ballSequence[calledCount];
   const letter = ['B','I','N','G','O'][Math.floor((number - 1) / 15)];
   await updateDoc(doc(db, ROOMS, roomCode), {
-    calledCount: calledCount + 1,
+    calledCount: increment(1),
     currentBall: { number, letter },
   });
   return { number, letter };
@@ -166,40 +175,113 @@ export async function resumeGame(roomCode) {
 
 // ─── Bingo! ───────────────────────────────────────────────────────────────────
 
-/** El jugador reclama BINGO — solo escribe la alerta, el host valida */
-export async function claimBingo(roomCode, uid) {
-  await updateDoc(doc(db, ROOMS, roomCode, PLAYERS, uid), {
-    bingoAlert: { claimed: true, claimedAt: serverTimestamp() },
-  });
+/**
+ * Valida automáticamente un BINGO leyendo los datos oficiales de Firestore.
+ * No requiere intervención del host.
+ * @param {string} roomCode
+ * @param {string} uid
+ * @returns {{ valid: boolean, matchedPatternId: string|null, matchedPatternLabel: string|null }}
+ */
+export async function autoValidateBingo(roomCode, uid) {
+  // Leer datos oficiales desde Firestore en paralelo
+  const [roomSnap, playerSnap] = await Promise.all([
+    getDoc(doc(db, ROOMS, roomCode)),
+    getDoc(doc(db, ROOMS, roomCode, PLAYERS, uid)),
+  ]);
+  if (!roomSnap.exists() || !playerSnap.exists()) {
+    return { valid: false, matchedPatternId: null, matchedPatternLabel: null };
+  }
+
+  const roomData   = roomSnap.data();
+  const playerData = playerSnap.data();
+
+  // Datos del sorteo
+  const ballSequence = roomData.ballSequence ?? [];
+  const calledCount  = roomData.calledCount  ?? 0;
+  const patternIds   = roomData.config?.patterns ?? [];
+  const calledSet    = new Set(ballSequence.slice(0, calledCount));
+
+  // Patrones ya ganados (para no repetir el mismo en la misma sesión)
+  const currentWinners  = roomData.winners ?? [];
+  const wonPatternIds   = currentWinners.map(w => w.matchedPatternId).filter(Boolean);
+
+  // Cartones del jugador
+  const rawCards = typeof playerData.cards === 'string'
+    ? JSON.parse(playerData.cards)
+    : playerData.cards ?? [];
+
+  // Verificación pura
+  const result = checkBingo(rawCards, calledSet, patternIds, wonPatternIds);
+
+  if (result.valid) {
+    await _confirmValid(roomCode, uid, result.matchedPatternId, result.matchedPatternLabel, patternIds.length);
+  } else {
+    // BINGO inválido → se elimina al jugador
+    const activePlayers = [];  // Para no hacer otra lectura, simplificamos: nunca auto-finaliza
+    await updateDoc(doc(db, ROOMS, roomCode, PLAYERS, uid), {
+      status: 'eliminated',
+      bingoAlert: null,
+    });
+  }
+
+  return result;
 }
 
-/** El host confirma un BINGO válido */
-export async function confirmBingoValid(roomCode, uid, matchedPattern) {
-  const batch = [
+/**
+ * Confirma un BINGO válido internamente:
+ * - El jugador sigue con status 'playing' (cartón activo)
+ * - Se incrementa su contador de victorias (wins)
+ * - Se comprueba si todos los patrones han sido ganados para finalizar o continuar
+ */
+async function _confirmValid(roomCode, uid, matchedPatternId, matchedPatternLabel, totalPatternsCount = 1) {
+  // Leer winners actuales (lectura fresca para evitar race conditions)
+  const roomSnap   = await getDoc(doc(db, ROOMS, roomCode));
+  const roomData   = roomSnap.data();
+  const currentWinners  = roomData.winners ?? [];
+  const configPatterns  = roomData.config?.patterns ?? [];
+  const totalPatterns   = totalPatternsCount || configPatterns.length || 1;
+
+  // Añadir ganador al registro (un jugador puede aparecer varias veces con distintos patrones)
+  const updatedWinners = [
+    ...currentWinners,
+    { uid, matchedPatternId, matchedPatternLabel },
+  ];
+
+  // Cuántos patrones únicos han sido ganados
+  const wonPatterns  = new Set(updatedWinners.map(w => w.matchedPatternId));
+  const allPatternsWon = wonPatterns.size >= totalPatterns;
+  const nextState    = allPatternsWon ? GAME_STATES.FINISHED : GAME_STATES.PLAYING;
+
+  await Promise.all([
+    // El jugador gana una copa pero SIGUE JUGANDO (cartón activo)
     updateDoc(doc(db, ROOMS, roomCode, PLAYERS, uid), {
-      status: 'winner',
+      status: 'playing',       // ← sigue activo
+      wins: increment(1),      // ← contador de copas
       bingoAlert: null,
     }),
     updateDoc(doc(db, ROOMS, roomCode), {
-      state: GAME_STATES.FINISHED,
-      winners: [{ uid, matchedPattern }],
+      state: nextState,
+      winners: updatedWinners,
     }),
-  ];
-  await Promise.all(batch);
+  ]);
+}
+
+/** Confirma un BINGO válido — versión pública para uso externo si se necesita */
+export async function confirmBingoValid(roomCode, uid, matchedPatternId, matchedPatternLabel, totalPatternsCount = 1) {
+  return _confirmValid(roomCode, uid, matchedPatternId, matchedPatternLabel, totalPatternsCount);
 }
 
 /** El host rechaza un BINGO inválido → jugador eliminado */
 export async function confirmBingoInvalid(roomCode, uid, shouldFinishGame = false) {
-  const batch = [
+  await Promise.all([
     updateDoc(doc(db, ROOMS, roomCode, PLAYERS, uid), {
       status: 'eliminated',
       bingoAlert: null,
     }),
-    updateDoc(doc(db, ROOMS, roomCode), { 
-      state: shouldFinishGame ? GAME_STATES.FINISHED : GAME_STATES.PLAYING 
+    updateDoc(doc(db, ROOMS, roomCode), {
+      state: shouldFinishGame ? GAME_STATES.FINISHED : GAME_STATES.PLAYING,
     }),
-  ];
-  await Promise.all(batch);
+  ]);
 }
 
 /** El jugador actualiza su marcado manual */
