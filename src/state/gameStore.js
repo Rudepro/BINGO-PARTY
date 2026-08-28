@@ -12,7 +12,8 @@ export const useGameStore = create((set, get) => ({
   calledCount:  0,
   ballSequence: [],
   currentBall:  null,   // { number, letter }
-  activePatterns: [],   // Array de IDs de patrones activos
+  activePatterns: [],   // Array de IDs de patrones activos (todos los configurados)
+  currentPatternId: null, // El patrón cronológico actualmente en juego
 
   // Alertas de BINGO
   bingoAlert: null,     // { uid, name, valid } mientras se verifica
@@ -32,13 +33,21 @@ export const useGameStore = create((set, get) => ({
 
   /** Sincroniza todo el estado desde un snapshot de Firestore */
   syncFromRoom: (roomData) => {
+    const patterns = roomData.config?.patterns ?? [];
+    const winners = roomData.winners ?? [];
+    
+    // Determinar el patrón actual (el primero que no haya sido ganado)
+    const wonPatternIds = new Set(winners.map(w => w.matchedPatternId).filter(Boolean));
+    const currentPatternId = patterns.find(p => !wonPatternIds.has(p)) || null;
+
     set({
       gameState:      roomData.state,
       calledCount:    roomData.calledCount,
       ballSequence:   roomData.ballSequence ?? [],
       currentBall:    roomData.currentBall ?? null,
-      activePatterns: roomData.config?.patterns ?? [],
-      winners:        roomData.winners ?? [],
+      activePatterns: patterns,
+      currentPatternId,
+      winners,
     });
   },
 
@@ -48,6 +57,7 @@ export const useGameStore = create((set, get) => ({
     ballSequence: [],
     currentBall: null,
     activePatterns: [],
+    currentPatternId: null,
     bingoAlert: null,
     winners: [],
   }),

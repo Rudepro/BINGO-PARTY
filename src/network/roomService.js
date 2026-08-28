@@ -173,7 +173,18 @@ export async function resumeGame(roomCode) {
   await updateDoc(doc(db, ROOMS, roomCode), { state: GAME_STATES.PLAYING });
 }
 
+export async function cancelGame(roomCode) {
+  await updateDoc(doc(db, ROOMS, roomCode), { state: GAME_STATES.CANCELLED });
+}
+
 // ─── Bingo! ───────────────────────────────────────────────────────────────────
+
+/** El jugador reclama BINGO — solo escribe la alerta en Firestore para la animación */
+export async function claimBingo(roomCode, uid, playerName) {
+  await updateDoc(doc(db, ROOMS, roomCode, PLAYERS, uid), {
+    bingoAlert: { claimed: true, name: playerName, claimedAt: serverTimestamp() },
+  });
+}
 
 /**
  * Valida automáticamente un BINGO leyendo los datos oficiales de Firestore.
@@ -201,23 +212,27 @@ export async function autoValidateBingo(roomCode, uid) {
   const patternIds   = roomData.config?.patterns ?? [];
   const calledSet    = new Set(ballSequence.slice(0, calledCount));
 
-  // Patrones ya ganados (para no repetir el mismo en la misma sesión)
+  // Determinar patrón actual cronológico
   const currentWinners  = roomData.winners ?? [];
-  const wonPatternIds   = currentWinners.map(w => w.matchedPatternId).filter(Boolean);
+  const wonPatternIds   = new Set(currentWinners.map(w => w.matchedPatternId).filter(Boolean));
+  const currentPatternId = patternIds.find(p => !wonPatternIds.has(p));
 
   // Cartones del jugador
   const rawCards = typeof playerData.cards === 'string'
     ? JSON.parse(playerData.cards)
     : playerData.cards ?? [];
 
-  // Verificación pura
-  const result = checkBingo(rawCards, calledSet, patternIds, wonPatternIds);
+  if (!currentPatternId) {
+    return { valid: false, matchedPatternId: null, matchedPatternLabel: null };
+  }
+
+  // Verificación pura (solo contra el patrón actual)
+  const result = checkBingo(rawCards, calledSet, [currentPatternId], []);
 
   if (result.valid) {
     await _confirmValid(roomCode, uid, result.matchedPatternId, result.matchedPatternLabel, patternIds.length);
   } else {
     // BINGO inválido → se elimina al jugador
-    const activePlayers = [];  // Para no hacer otra lectura, simplificamos: nunca auto-finaliza
     await updateDoc(doc(db, ROOMS, roomCode, PLAYERS, uid), {
       status: 'eliminated',
       bingoAlert: null,
@@ -287,4 +302,9 @@ export async function confirmBingoInvalid(roomCode, uid, shouldFinishGame = fals
 /** El jugador actualiza su marcado manual */
 export async function updateMarkedCells(roomCode, uid, markedCells) {
   await updateDoc(doc(db, ROOMS, roomCode, PLAYERS, uid), { markedCells: JSON.stringify(markedCells) });
+}
+
+/** El host revive a un jugador eliminado */
+export async function reinstatePlayer(roomCode, uid) {
+  await updateDoc(doc(db, ROOMS, roomCode, PLAYERS, uid), { status: 'playing' });
 }

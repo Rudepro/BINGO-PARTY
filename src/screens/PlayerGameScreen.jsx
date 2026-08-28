@@ -1,9 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import {
-  subscribeToRoom, subscribeToPlayer, subscribeToPlayers
-} from '../network/realtimeSync.js';
-import { autoValidateBingo, updateMarkedCells } from '../network/roomService.js';
+import { subscribeToRoom, subscribeToPlayer, subscribeToPlayers } from '../network/realtimeSync.js';
+import { claimBingo, autoValidateBingo, updateMarkedCells } from '../network/roomService.js';
 import { useRoomStore } from '../state/roomStore.js';
 import { useGameStore } from '../state/gameStore.js';
 import { usePlayerStore } from '../state/playerStore.js';
@@ -15,6 +13,7 @@ import PatternIndicator from '../components/player/PatternIndicator.jsx';
 import BingoCard from '../components/player/BingoCard.jsx';
 import BingoButton from '../components/player/BingoButton.jsx';
 import CalledNumbersBoard from '../components/player/CalledNumbersBoard.jsx';
+import BingoAlertOverlay from '../components/shared/BingoAlertOverlay.jsx';
 
 export default function PlayerGameScreen() {
   const { roomId } = useParams();
@@ -46,6 +45,13 @@ export default function PlayerGameScreen() {
 
     const unsubPlayers = subscribeToPlayers(roomId, (players) => {
       roomStore.setPlayers(players);
+      // Detectar si alguien está validando su BINGO (bingoAlert en tránsito)
+      const alertPlayer = players.find(p => p.bingoAlert?.claimed);
+      if (alertPlayer) {
+        gameStore.setBingoAlert(alertPlayer.bingoAlert);
+      } else {
+        gameStore.setBingoAlert(null);
+      }
     });
 
     return () => { unsubRoom(); unsubPlayer(); unsubPlayers(); };
@@ -69,13 +75,25 @@ export default function PlayerGameScreen() {
     return () => clearTimeout(t);
   }, [gameStore.currentBall?.number]);
 
-  // ── Cantar BINGO (validación automática) ─────────────────────────────────
+  // ── Cantar BINGO (validación automática con delay para animación) ─────────────────────────────────
   const handleBingo = async () => {
-    if (isValidating) return;
+    if (isValidating || isFinished || status === 'eliminated') return;
     setIsValidating(true);
     try {
-      await autoValidateBingo(roomId, playerStore.uid);
-    } finally {
+      // 1. Reclamar (escribe en Firestore y dispara la animación para todos)
+      await claimBingo(roomId, playerStore.uid, playerStore.name);
+      
+      // 2. Esperar 3.5s para que la animación termine
+      setTimeout(async () => {
+        try {
+          await autoValidateBingo(roomId, playerStore.uid);
+        } finally {
+          setIsValidating(false);
+        }
+      }, 3500);
+      
+    } catch (e) {
+      console.error(e);
       setIsValidating(false);
     }
   };
@@ -86,12 +104,13 @@ export default function PlayerGameScreen() {
 
   if (loading) return <div className="text-center p-8">Conectando...</div>;
 
-  const { gameState, calledCount, currentBall, ballSequence, activePatterns } = gameStore;
+  const { gameState, calledCount, currentBall, ballSequence, currentPatternId, bingoAlert } = gameStore;
   const { players, roomConfig } = roomStore;
   const { cards, markedCells, status, wins } = playerStore;
 
   const isLobby    = gameState === GAME_STATES.LOBBY;
   const isFinished = gameState === GAME_STATES.FINISHED;
+  const isCancelled = gameState === GAME_STATES.CANCELLED;
   const calledSet  = new Set(ballSequence.slice(0, calledCount));
   const ballColor  = currentBall ? getColumnColor(currentBall.letter) : null;
 
@@ -100,10 +119,23 @@ export default function PlayerGameScreen() {
   // El botón BINGO solo se bloquea si está eliminado, la partida terminó, o está validando
   const bingoDisabled = isFinished || status === 'eliminated';
 
+  if (isCancelled) {
+    return (
+      <div className="container" style={{ padding: '2rem 1rem' }}>
+        <div className="flex flex-col items-center gap-4 glass animate-fade-up text-center" style={{ padding: '3rem 1rem', marginTop: '2rem' }}>
+          <div style={{ fontSize: '3rem' }}>🚫</div>
+          <h1 style={{ color: 'var(--red-400)', margin: 0 }}>Partida Cancelada</h1>
+          <p style={{ color: 'var(--gray-300)' }}>El host ha cancelado esta sala.</p>
+          <button className="btn btn-primary" onClick={() => navigate('/')}>Volver al Inicio</button>
+        </div>
+      </div>
+    );
+  }
+
   if (isLobby) {
     return (
       <div className="flex flex-col items-center" style={{ padding: '2rem 1rem' }}>
-        <h2 style={{ color: 'var(--green-600)', marginBottom: '1rem' }}>Sala {roomId}</h2>
+        <h2 style={{ color: 'var(--green-600)', margin: '0 0 1rem 0' }}>Sala {roomId}</h2>
         <Lobby players={players} roomCode={roomId} isHost={false} roomConfig={roomConfig} />
       </div>
     );
@@ -111,6 +143,9 @@ export default function PlayerGameScreen() {
 
   return (
     <div className="container" style={{ padding: '1rem 0' }}>
+
+      {/* Overlay de BINGO (Global) */}
+      <BingoAlertOverlay bingoAlert={bingoAlert} />
 
       {/* Ball overlay — aparece en cada bola nueva */}
       {overlayBall && (() => {
@@ -208,7 +243,7 @@ export default function PlayerGameScreen() {
         {/* Right: Board & Patterns */}
         <div className="flex flex-col gap-3">
           <div className="glass" style={{ padding: '1rem', borderRadius: 'var(--radius-md)' }}>
-            <PatternIndicator patternIds={activePatterns} />
+            <PatternIndicator patternId={currentPatternId} />
           </div>
 
           <div className="glass" style={{ padding: '1rem', borderRadius: 'var(--radius-md)' }}>

@@ -17,8 +17,9 @@ const STATUS_BADGE = {
  *   players     {Array}
  *   bingoAlert  {{ uid, name } | null}  jugador que cantó BINGO (informativo)
  *   isVerifying {boolean}
+ *   onReinstate {(uid) => void}
  */
-export default function PlayersPanel({ players = [], bingoAlert, isVerifying }) {
+export default function PlayersPanel({ players = [], bingoAlert, isVerifying, onReinstate }) {
   return (
     <div className="flex flex-col gap-2">
       <p className="form-label" style={{ margin: 0 }}>Jugadores ({players.length})</p>
@@ -74,9 +75,21 @@ export default function PlayersPanel({ players = [], bingoAlert, isVerifying }) 
               )}
             </div>
 
-            <span className={`badge ${STATUS_BADGE[p.status] ?? 'badge-gray'}`}>
-              {STATUS_LABEL[p.status] ?? p.status}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className={`badge ${STATUS_BADGE[p.status] ?? 'badge-gray'}`}>
+                {STATUS_LABEL[p.status] ?? p.status}
+              </span>
+              {p.status === 'eliminated' && onReinstate && (
+                <button
+                  className="btn btn-ghost btn-sm"
+                  style={{ padding: '0.1rem 0.4rem', fontSize: '0.75rem', color: 'var(--green-400)' }}
+                  onClick={() => onReinstate(p.uid)}
+                  title="Revivir jugador"
+                >
+                  ➕
+                </button>
+              )}
+            </div>
           </div>
         );
       })}

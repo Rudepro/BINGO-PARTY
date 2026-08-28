@@ -3,7 +3,10 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   subscribeToRoom, subscribeToPlayers, subscribeToPlayer
 } from '../network/realtimeSync.js';
-import { startGame, callNextBall, pauseGame, resumeGame } from '../network/roomService.js';
+import {
+  startGame, callNextBall, pauseGame, resumeGame, 
+  claimBingo, autoValidateBingo, cancelGame, reinstatePlayer 
+} from '../network/roomService.js';
 import { useRoomStore } from '../state/roomStore.js';
 import { useGameStore } from '../state/gameStore.js';
 import { usePlayerStore } from '../state/playerStore.js';
@@ -17,6 +20,9 @@ import BallHistory from '../components/host/BallHistory.jsx';
 import PlayersPanel from '../components/host/PlayersPanel.jsx';
 import PatternIndicator from '../components/player/PatternIndicator.jsx';
 import BingoCard from '../components/player/BingoCard.jsx';
+import BingoButton from '../components/player/BingoButton.jsx';
+import CalledNumbersBoard from '../components/player/CalledNumbersBoard.jsx';
+import BingoAlertOverlay from '../components/shared/BingoAlertOverlay.jsx';
 import { getLastBalls } from '../core/numberCaller.js';
 
 export default function HostGameScreen() {
@@ -30,6 +36,7 @@ export default function HostGameScreen() {
 
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState('');
+  const [isValidating, setIsValidating] = useState(false);
 
   // Sincronizar sala y jugadores
   useEffect(() => {
@@ -49,7 +56,7 @@ export default function HostGameScreen() {
       // Detectar si alguien está validando su BINGO (bingoAlert en tránsito)
       const alertPlayer = players.find(p => p.bingoAlert?.claimed);
       if (alertPlayer) {
-        gameStore.setBingoAlert(alertPlayer);
+        gameStore.setBingoAlert(alertPlayer.bingoAlert);
       } else {
         gameStore.setBingoAlert(null);
       }
@@ -69,25 +76,63 @@ export default function HostGameScreen() {
   const handleCallNext = () => callNextBall(roomId, gameStore.ballSequence, gameStore.calledCount);
   const handleToggleCards = () => playerStore.toggleHostCards();
 
+  const handleBingo = async () => {
+    if (isValidating || gameState === GAME_STATES.FINISHED || playerStore.status === 'eliminated') return;
+    setIsValidating(true);
+    try {
+      await claimBingo(roomId, playerStore.uid, playerStore.name);
+      setTimeout(async () => {
+        try {
+          await autoValidateBingo(roomId, playerStore.uid);
+        } finally {
+          setIsValidating(false);
+        }
+      }, 3500);
+    } catch (e) {
+      console.error(e);
+      setIsValidating(false);
+    }
+  };
+
   if (loading) return <div className="text-center p-8">Cargando sala...</div>;
   if (error)   return <div className="text-center p-8 color-red-500">{error}</div>;
 
-  const { gameState, calledCount, currentBall, ballSequence, bingoAlert, activePatterns, winners } = gameStore;
+  const { gameState, calledCount, currentBall, ballSequence, bingoAlert, currentPatternId, winners } = gameStore;
   const { players, roomConfig } = roomStore;
-  const { hostCardsVisible, cards, markedCells } = playerStore;
+  const { hostCardsVisible, cards, markedCells, status, wins } = playerStore;
 
   const isLobby     = gameState === GAME_STATES.LOBBY;
   const isPlaying   = gameState === GAME_STATES.PLAYING;
   const isPaused    = gameState === GAME_STATES.PAUSED;
   const isVerifying = !!bingoAlert;
   const isFinished  = gameState === GAME_STATES.FINISHED;
+  const isCancelled = gameState === GAME_STATES.CANCELLED;
 
   const history = getLastBalls(ballSequence, calledCount, 5);
 
+  const handleCancelGame = async () => {
+    if (window.confirm('¿Estás seguro de que quieres cancelar la partida? Esto mandará a todos al menú principal.')) {
+      await cancelGame(roomId);
+    }
+  };
+
+  const handleReinstate = async (uid) => {
+    await reinstatePlayer(roomId, uid);
+  };
+
   return (
     <div className="container" style={{ padding: '2rem 0' }}>
+      
+      <BingoAlertOverlay bingoAlert={bingoAlert} />
 
-      {isLobby ? (
+      {isCancelled ? (
+        <div className="flex flex-col items-center gap-4 glass animate-fade-up text-center" style={{ padding: '3rem 1rem', marginTop: '2rem' }}>
+          <div style={{ fontSize: '3rem' }}>🚫</div>
+          <h1 style={{ color: 'var(--red-400)', margin: 0 }}>Partida Cancelada</h1>
+          <p style={{ color: 'var(--gray-300)' }}>El host ha cancelado esta sala.</p>
+          <button className="btn btn-primary" onClick={() => navigate('/')}>Volver al Inicio</button>
+        </div>
+      ) : isLobby ? (
         <div className="flex flex-col items-center gap-3">
           <h2 style={{ color: 'var(--gold-400)' }}>👑 Panel de Control (Host)</h2>
           <RoomCodeDisplay roomCode={roomId} />
@@ -101,7 +146,16 @@ export default function HostGameScreen() {
             <div className="glass flex items-center" style={{ padding: '1rem', justifyContent: 'space-between', borderRadius: 'var(--radius-md)' }}>
               <div>
                 <h2 style={{ color: 'var(--gold-400)', margin: 0 }}>Sala: {roomId}</h2>
-                <span className="badge badge-gold" style={{ marginTop: '.5rem' }}>Vista de Host</span>
+                <div className="flex items-center gap-2" style={{ marginTop: '.5rem' }}>
+                  <span className="badge badge-gold">Vista de Host</span>
+                  <button 
+                    className="btn btn-ghost btn-sm" 
+                    style={{ padding: '0.1rem 0.5rem', fontSize: '0.75rem', color: 'var(--red-400)' }}
+                    onClick={handleCancelGame}
+                  >
+                    Cancelar Partida
+                  </button>
+                </div>
               </div>
               <button className="btn btn-ghost btn-sm" onClick={handleToggleCards}>
                 {hostCardsVisible ? '👁 Ocultar Cartones' : '👁 Mostrar Cartones'}
@@ -184,7 +238,16 @@ export default function HostGameScreen() {
 
             {hostCardsVisible && (
               <div className="animate-fade-up">
-                <h3 style={{ marginBottom: '1rem', color: 'var(--gold-400)' }}>Tus Cartones</h3>
+                <div className="flex items-center gap-4" style={{ marginBottom: '1rem', flexWrap: 'wrap' }}>
+                  <h3 style={{ color: 'var(--gold-400)', margin: 0 }}>Tus Cartones</h3>
+                  <BingoButton
+                    onBingo={handleBingo}
+                    disabled={isFinished || status === 'eliminated' || isValidating}
+                    status={status}
+                    wins={wins}
+                    isValidating={isValidating}
+                  />
+                </div>
                 <div className="flex gap-2" style={{ flexWrap: 'wrap', justifyContent: 'center' }}>
                   {cards.map((card, i) => (
                     <BingoCard
@@ -204,7 +267,11 @@ export default function HostGameScreen() {
           {/* Sidebar (Right) */}
           <div className="flex flex-col gap-3">
             <div className="glass" style={{ padding: '1.5rem', borderRadius: 'var(--radius-md)' }}>
-              <PatternIndicator patternIds={activePatterns} />
+              <PatternIndicator patternId={currentPatternId} />
+            </div>
+
+            <div className="glass" style={{ padding: '1rem', borderRadius: 'var(--radius-md)' }}>
+              <CalledNumbersBoard calledNumbers={new Set(ballSequence.slice(0, calledCount))} currentBall={currentBall} />
             </div>
 
             <div className="glass" style={{ padding: '1.5rem', borderRadius: 'var(--radius-md)' }}>
@@ -216,6 +283,7 @@ export default function HostGameScreen() {
                 players={players}
                 bingoAlert={bingoAlert}
                 isVerifying={isVerifying}
+                onReinstate={handleReinstate}
               />
             </div>
           </div>
