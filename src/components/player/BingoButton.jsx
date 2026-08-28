@@ -8,8 +8,9 @@ import React from 'react';
  *   status     {'playing'|'eliminated'}
  *   wins       {number}   cuántos patrones ha ganado ya
  *   isValidating {boolean}  mientras se procesa la validación automática
+ *   compact      {boolean}
  */
-export default function BingoButton({ onBingo, disabled, status, wins = 0, isValidating = false }) {
+export default function BingoButton({ onBingo, disabled, status, wins = 0, isValidating = false, compact = false }) {
   const isEliminated = status === 'eliminated';
 
   // Etiqueta dinámica según el estado
@@ -27,7 +28,7 @@ export default function BingoButton({ onBingo, disabled, status, wins = 0, isVal
     <div className="flex flex-col items-center gap-2">
       <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
         <button
-          className="bingo-btn"
+          className={compact ? "btn btn-gold" : "bingo-btn"}
           onClick={onBingo}
           disabled={isDisabled}
           id="bingo-claim-btn"
@@ -62,13 +63,13 @@ export default function BingoButton({ onBingo, disabled, status, wins = 0, isVal
         )}
       </div>
 
-      {isEliminated && (
+      {isEliminated && !compact && (
         <p style={{ color: 'var(--red-500)', fontSize: '.8rem', fontWeight: 700 }}>
           Canto inválido — sigues observando
         </p>
       )}
 
-      {!isEliminated && wins > 0 && !isValidating && (
+      {!isEliminated && wins > 0 && !isValidating && !compact && (
         <p style={{ color: 'var(--gold-400)', fontSize: '.78rem', fontWeight: 700, textAlign: 'center' }}>
           ¡Tienes {wins} {wins === 1 ? 'copa' : 'copas'}! Sigue jugando para ganar más
         </p>

@@ -246,6 +246,7 @@ export default function HostGameScreen() {
                     status={status}
                     wins={wins}
                     isValidating={isValidating}
+                    compact={true}
                   />
                 </div>
                 <div className="flex gap-2" style={{ flexWrap: 'wrap', justifyContent: 'center' }}>

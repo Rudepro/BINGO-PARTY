@@ -3,16 +3,19 @@
  */
 
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 
-export const usePlayerStore = create((set, get) => ({
-  uid:         null,
-  name:        null,
-  isHost:      false,
-  cards:       [],          // number[][][] → [cardIdx][col][row]
-  markedCells: [],          // boolean[][][] → [cardIdx][row][col]
-  status:      'waiting',   // 'waiting' | 'playing' | 'eliminated'
-  wins:        0,           // cuántos patrones ganados en esta partida
-  hostCardsVisible: true,   // toggle Esconder/Mostrar Cartas (solo host)
+export const usePlayerStore = create(
+  persist(
+    (set, get) => ({
+      uid:         null,
+      name:        null,
+      isHost:      false,
+      cards:       [],          // number[][][] → [cardIdx][col][row]
+      markedCells: [],          // boolean[][][] → [cardIdx][row][col]
+      status:      'waiting',   // 'waiting' | 'playing' | 'eliminated'
+      wins:        0,           // cuántos patrones ganados en esta partida
+      hostCardsVisible: true,   // toggle Esconder/Mostrar Cartas (solo host)
 
   setUid:    (uid) => set({ uid }),
   setName:   (n)   => set({ name: n }),
@@ -54,4 +57,14 @@ export const usePlayerStore = create((set, get) => ({
     uid: null, name: null, isHost: false,
     cards: [], markedCells: [], status: 'waiting', wins: 0, hostCardsVisible: true,
   }),
-}));
+    }),
+    {
+      name: 'bingo-player-storage',
+      partialize: (state) => ({
+        uid: state.uid,
+        name: state.name,
+        isHost: state.isHost,
+      }),
+    }
+  )
+);
