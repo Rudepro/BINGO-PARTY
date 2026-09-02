@@ -577,6 +577,19 @@ p  { line-height: 1.6; color: var(--gray-300); }
 .animate-fade-up  { animation: fadeInUp .45s ease both; }
 .animate-pulse-glow { animation: pulse-glow 1.5s ease infinite; }
 .animate-float    { animation: float 3s ease infinite; }
+.animate-zoom-in  { animation: zoomIn .4s cubic-bezier(.34,1.56,.64,1) both; }
+.animate-fade-in  { animation: overlayIn .3s ease both; }
+.animate-bounce   { animation: bounce 1s ease infinite; }
+
+@keyframes zoomIn {
+  from { transform: scale(0.5); opacity: 0; }
+  to   { transform: scale(1); opacity: 1; }
+}
+
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-12px); }
+}
 
 /* ─── BINGO Button ───────────────────────────────────────── */
 .bingo-btn {

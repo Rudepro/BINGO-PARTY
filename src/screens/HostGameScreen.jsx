@@ -5,7 +5,8 @@ import {
 } from '../network/realtimeSync.js';
 import {
   startGame, callNextBall, pauseGame, resumeGame, 
-  claimBingo, autoValidateBingo, cancelGame, reinstatePlayer 
+  claimBingo, autoValidateBingo, cancelGame, reinstatePlayer,
+  clearFalseAlarm, resetRoom, updateMarkedCells, updateRoomConfig 
 } from '../network/roomService.js';
 import { useRoomStore } from '../state/roomStore.js';
 import { useGameStore } from '../state/gameStore.js';
@@ -72,6 +73,15 @@ export default function HostGameScreen() {
     };
   }, [roomId, playerStore.uid, playerStore.isHost, navigate]);
 
+  // Sync de markedCells locales del host a Firestore debounced
+  useEffect(() => {
+    if (!playerStore.uid || loading) return;
+    const timeoutId = setTimeout(() => {
+      updateMarkedCells(roomId, playerStore.uid, playerStore.markedCells);
+    }, 1000);
+    return () => clearTimeout(timeoutId);
+  }, [playerStore.markedCells, roomId, playerStore.uid, loading]);
+
   const handleStart    = () => startGame(roomId);
   const handleCallNext = () => callNextBall(roomId, gameStore.ballSequence, gameStore.calledCount);
   const handleToggleCards = () => playerStore.toggleHostCards();
@@ -80,6 +90,7 @@ export default function HostGameScreen() {
     if (isValidating || gameState === GAME_STATES.FINISHED || playerStore.status === 'eliminated') return;
     setIsValidating(true);
     try {
+      await updateMarkedCells(roomId, playerStore.uid, playerStore.markedCells);
       await claimBingo(roomId, playerStore.uid, playerStore.name);
       setTimeout(async () => {
         try {
@@ -97,7 +108,7 @@ export default function HostGameScreen() {
   if (loading) return <div className="text-center p-8">Cargando sala...</div>;
   if (error)   return <div className="text-center p-8 color-red-500">{error}</div>;
 
-  const { gameState, calledCount, currentBall, ballSequence, bingoAlert, currentPatternId, winners } = gameStore;
+  const { gameState, calledCount, currentBall, ballSequence, bingoAlert, currentPatternId, winners, falseAlarm } = gameStore;
   const { players, roomConfig } = roomStore;
   const { hostCardsVisible, cards, markedCells, status, wins } = playerStore;
 
@@ -123,7 +134,11 @@ export default function HostGameScreen() {
   return (
     <div className="container" style={{ padding: '2rem 0' }}>
       
-      <BingoAlertOverlay bingoAlert={bingoAlert} />
+      <BingoAlertOverlay
+        bingoAlert={bingoAlert}
+        falseAlarm={falseAlarm}
+        onFalseAlarmDismiss={() => clearFalseAlarm(roomId)}
+      />
 
       {isCancelled ? (
         <div className="flex flex-col items-center gap-4 glass animate-fade-up text-center" style={{ padding: '3rem 1rem', marginTop: '2rem' }}>
@@ -136,7 +151,14 @@ export default function HostGameScreen() {
         <div className="flex flex-col items-center gap-3">
           <h2 style={{ color: 'var(--gold-400)' }}>👑 Panel de Control (Host)</h2>
           <RoomCodeDisplay roomCode={roomId} />
-          <Lobby players={players} roomCode={roomId} isHost={true} onStart={handleStart} roomConfig={roomConfig} />
+          <Lobby
+            players={players}
+            roomCode={roomId}
+            isHost={true}
+            onStart={handleStart}
+            roomConfig={roomConfig}
+            onUpdateConfig={(cfg) => updateRoomConfig(roomId, cfg)}
+          />
         </div>
       ) : (
         <div className="game-layout">
@@ -219,7 +241,12 @@ export default function HostGameScreen() {
                   }
                 </div>
 
-                <button className="btn btn-green" onClick={() => navigate('/')}>Salir al Inicio</button>
+                <div className="flex gap-2 justify-center" style={{ flexWrap: 'wrap' }}>
+                  <button className="btn btn-gold" onClick={async () => { await resetRoom(roomId); }}>
+                    🔄 Volver a Jugar
+                  </button>
+                  <button className="btn btn-ghost" onClick={() => navigate('/')}>Salir al Inicio</button>
+                </div>
               </div>
             ) : (
               <div className="glass" style={{ padding: '2rem', borderRadius: 'var(--radius-md)' }}>

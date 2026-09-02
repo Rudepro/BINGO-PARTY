@@ -25,8 +25,8 @@
  */
 
 import {
-  doc, setDoc, getDoc, updateDoc,
-  collection, serverTimestamp, increment,
+  doc, setDoc, getDoc, updateDoc, getDocs,
+  collection, serverTimestamp, increment, writeBatch,
 } from 'firebase/firestore';
 import { db, ensureAnonymousAuth } from './firebaseClient.js';
 import { generateRoomCode }        from '../utils/idGenerator.js';
@@ -232,11 +232,17 @@ export async function autoValidateBingo(roomCode, uid) {
   if (result.valid) {
     await _confirmValid(roomCode, uid, result.matchedPatternId, result.matchedPatternLabel, patternIds.length);
   } else {
-    // BINGO inválido → se elimina al jugador
-    await updateDoc(doc(db, ROOMS, roomCode, PLAYERS, uid), {
-      status: 'eliminated',
-      bingoAlert: null,
-    });
+    // BINGO inválido → se elimina al jugador + avisar a todos con falseAlarm
+    const playerName = playerData.name ?? 'Jugador';
+    await Promise.all([
+      updateDoc(doc(db, ROOMS, roomCode, PLAYERS, uid), {
+        status: 'eliminated',
+        bingoAlert: null,
+      }),
+      updateDoc(doc(db, ROOMS, roomCode), {
+        falseAlarm: { name: playerName, timestamp: serverTimestamp() },
+      }),
+    ]);
   }
 
   return result;
@@ -308,3 +314,94 @@ export async function updateMarkedCells(roomCode, uid, markedCells) {
 export async function reinstatePlayer(roomCode, uid) {
   await updateDoc(doc(db, ROOMS, roomCode, PLAYERS, uid), { status: 'playing' });
 }
+
+/** Limpia la alerta de falsa alarma del documento de sala */
+export async function clearFalseAlarm(roomCode) {
+  await updateDoc(doc(db, ROOMS, roomCode), { falseAlarm: null });
+}
+
+/**
+ * Resetea la partida para volver a jugar en la misma sala.
+ * Genera nueva secuencia de bolas, nuevos cartones, y vuelve al LOBBY.
+ */
+export async function resetRoom(roomCode) {
+  const roomSnap = await getDoc(doc(db, ROOMS, roomCode));
+  if (!roomSnap.exists()) return;
+  const roomData = roomSnap.data();
+  const { cardsPerPlayer } = roomData.config;
+
+  // Generar nueva secuencia y firmas
+  const ballSequence = createBallSequence();
+  const usedSignatures = new Set();
+
+  // Leer jugadores actuales
+  const playersSnap = await getDocs(collection(db, ROOMS, roomCode, PLAYERS));
+  const batch = writeBatch(db);
+
+  // Regenerar cartones para cada jugador
+  playersSnap.docs.forEach((playerDoc) => {
+    const newCards = generatePlayerCards(cardsPerPlayer, usedSignatures);
+    const newMarked = newCards.map(() => initialMarkedCells());
+    batch.update(playerDoc.ref, {
+      cards: JSON.stringify(newCards),
+      markedCells: JSON.stringify(newMarked),
+      status: 'waiting',
+      wins: 0,
+      bingoAlert: null,
+    });
+  });
+
+  // Resetear sala
+  batch.update(doc(db, ROOMS, roomCode), {
+    ballSequence,
+    calledCount: 0,
+    currentBall: null,
+    state: GAME_STATES.LOBBY,
+    winners: [],
+    falseAlarm: null,
+    usedSignatures: [...usedSignatures],
+  });
+
+  await batch.commit();
+}
+
+/**
+ * Actualiza la configuración de la sala en tiempo real (solo en estado LOBBY).
+ * Si cambia `cardsPerPlayer`, regenera automáticamente los cartones de todos los jugadores.
+ */
+export async function updateRoomConfig(roomCode, newConfig) {
+  const roomRef = doc(db, ROOMS, roomCode);
+  const roomSnap = await getDoc(roomRef);
+  if (!roomSnap.exists()) return;
+  const oldConfig = roomSnap.data().config || {};
+  const mergedConfig = { ...oldConfig, ...newConfig };
+
+  const cardsCountChanged = newConfig.cardsPerPlayer && newConfig.cardsPerPlayer !== oldConfig.cardsPerPlayer;
+
+  if (cardsCountChanged) {
+    const usedSignatures = new Set();
+    const playersSnap = await getDocs(collection(db, ROOMS, roomCode, PLAYERS));
+    const batch = writeBatch(db);
+
+    playersSnap.docs.forEach((playerDoc) => {
+      const newCards = generatePlayerCards(mergedConfig.cardsPerPlayer, usedSignatures);
+      const newMarked = newCards.map(() => initialMarkedCells());
+      batch.update(playerDoc.ref, {
+        cards: JSON.stringify(newCards),
+        markedCells: JSON.stringify(newMarked),
+      });
+    });
+
+    batch.update(roomRef, {
+      config: mergedConfig,
+      usedSignatures: [...usedSignatures],
+    });
+
+    await batch.commit();
+  } else {
+    await updateDoc(roomRef, {
+      config: mergedConfig,
+    });
+  }
+}
+

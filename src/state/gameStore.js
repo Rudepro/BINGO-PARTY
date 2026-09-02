@@ -17,6 +17,7 @@ export const useGameStore = create((set, get) => ({
 
   // Alertas de BINGO
   bingoAlert: null,     // { uid, name, valid } mientras se verifica
+  falseAlarm: null,     // { name, timestamp } cuando alguien canta un BINGO inválido
 
   // Ganadores
   winners: [],
@@ -29,6 +30,7 @@ export const useGameStore = create((set, get) => ({
   setCurrentBall:  (ball) => set({ currentBall: ball }),
   setActivePatterns: (p)  => set({ activePatterns: p }),
   setBingoAlert:   (a)    => set({ bingoAlert: a }),
+  setFalseAlarm:   (a)    => set({ falseAlarm: a }),
   setWinners:      (w)    => set({ winners: w }),
 
   /** Sincroniza todo el estado desde un snapshot de Firestore */
@@ -48,6 +50,7 @@ export const useGameStore = create((set, get) => ({
       activePatterns: patterns,
       currentPatternId,
       winners,
+      falseAlarm:     roomData.falseAlarm ?? null,
     });
   },
 
@@ -59,6 +62,7 @@ export const useGameStore = create((set, get) => ({
     activePatterns: [],
     currentPatternId: null,
     bingoAlert: null,
+    falseAlarm: null,
     winners: [],
   }),
 }));
